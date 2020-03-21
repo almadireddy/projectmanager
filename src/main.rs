@@ -9,6 +9,8 @@ use yaml_rust::{YamlLoader, Yaml};
 use std::fs::{File};
 use std::io::{Read, Error, ErrorKind};
 use std::vec::Vec;
+use std::result::Result;
+use std::process::Command;
 
 fn main() {
     let matches = App::new("Projects")
@@ -40,7 +42,7 @@ fn main() {
     }    
 }
 
-fn load_projects_from_data() -> std::result::Result<Yaml, Error> {
+fn load_projects_from_data() -> Result<Yaml, Error> {
     let home_directory = dirs::home_dir();
     let mut config_path: std::path::PathBuf;
     let f: std::io::Result<File>;
@@ -112,11 +114,12 @@ fn list_projects() {
     }
 
     let selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Pick your flavor")
+        .with_prompt("Select project")
         .default(0)
         .items(keys.as_slice())
         .interact()
         .unwrap();
+
     println!("selection: {}", selection);
     let choice = keys.get(selection).unwrap();
     println!("Enjoy your {:?}!", projects[choice.as_str()]);
@@ -130,5 +133,18 @@ fn add_project(matches: &clap::ArgMatches<'_>) {
 
 fn open_project(matches: &clap::ArgMatches<'_>) {
     let project_name = matches.value_of("projectname").unwrap();
-    println!("opening project {}", project_name);
+    let project_data = load_projects_from_data();
+    
+    let project = project_data.unwrap().clone();
+    let hash = project.into_hash().unwrap();
+    let entry = hash.get(&Yaml::from_str(&project_name));
+    
+    match entry {
+        Some(e) => {
+            let path = e.as_str().unwrap();
+            println!("opening {} in VSCode at {}", project_name, path);
+            Command::new("code").arg(path).output().expect("failed to open code");
+        },
+        None => println!("Project doesn't exist!")
+    }
 }
