@@ -20,7 +20,7 @@ fn main() {
         .subcommand(SubCommand::with_name("open")
                 .about("open a project")
                 .arg(Arg::with_name("projectname")
-                        .required(true)
+                        .required(false)
                         .index(1)))
         .subcommand(SubCommand::with_name("list")
                 .about("list project tracked with project manager"))
@@ -90,21 +90,7 @@ fn load_projects_from_data() -> Result<Yaml, Error> {
     }
 }
 
-fn list_projects() {
-    let projects_yaml = load_projects_from_data();
-    let projects: Yaml; 
-
-    match projects_yaml {
-        Ok(pr) => {
-            projects = pr.clone();
-            println!("{:?}", projects);
-        },
-        Err(r) => {
-            println!("error: {}", r);
-            return
-        },
-    }
-
+fn get_keys_from_project_data(projects: &Yaml) -> Vec<String> {
     let mut hash = projects.clone().into_hash().unwrap();
     let mut keys: Vec<String> = Vec::new();
 
@@ -113,6 +99,10 @@ fn list_projects() {
         keys.push(key);
     }
 
+    keys
+}
+
+fn display_selection(keys: &Vec<String>) -> usize {
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Select project")
         .default(0)
@@ -120,9 +110,32 @@ fn list_projects() {
         .interact()
         .unwrap();
 
-    println!("selection: {}", selection);
-    let choice = keys.get(selection).unwrap();
-    println!("Enjoy your {:?}!", projects[choice.as_str()]);
+    selection
+}
+
+fn list_projects() {
+    let projects_yaml = load_projects_from_data();
+    let projects: Yaml; 
+
+    match projects_yaml {
+        Ok(pr) => {
+            projects = pr.clone();
+        },
+        Err(r) => {
+            println!("error: {}", r);
+            return
+        },
+    }
+
+    let keys = get_keys_from_project_data(&projects);
+    println!("Your projects:");
+
+    for i in keys {
+        let hash = projects.clone().into_hash().unwrap();
+        let location = hash.get(&Yaml::from_str(&i)).unwrap().as_str().unwrap();
+        println!("{}", i);
+        println!("  {}", location);
+    }
 }
 
 fn add_project(matches: &clap::ArgMatches<'_>) {
@@ -131,20 +144,42 @@ fn add_project(matches: &clap::ArgMatches<'_>) {
     println!("adding project {} at path {}", project_name, project_path);
 }
 
+fn run_open_command(path: &str) {
+    println!("opening in VSCode at {}", path);
+    Command::new("code").arg(path).output().expect("failed to open code");
+}
+
 fn open_project(matches: &clap::ArgMatches<'_>) {
-    let project_name = matches.value_of("projectname").unwrap();
+    let project_name = matches.value_of("projectname");
+    
     let project_data = load_projects_from_data();
+    let project = project_data.unwrap();
+    let hash = project.clone().into_hash().unwrap();
     
-    let project = project_data.unwrap().clone();
-    let hash = project.into_hash().unwrap();
-    let entry = hash.get(&Yaml::from_str(&project_name));
-    
-    match entry {
-        Some(e) => {
-            let path = e.as_str().unwrap();
-            println!("opening {} in VSCode at {}", project_name, path);
-            Command::new("code").arg(path).output().expect("failed to open code");
+    match project_name {
+        Some(p) => {
+            let entry = hash.get(&Yaml::from_str(&p));
+            match entry {
+                Some(e) => {
+                    let path = e.as_str().unwrap();
+                    run_open_command(path);
+                },
+                None => println!("Project doesn't exist!")
+            }
         },
-        None => println!("Project doesn't exist!")
+        None => {
+            let keys = get_keys_from_project_data(&project);
+            let selection = display_selection(&keys);
+            let choice = keys.get(selection).unwrap();
+            let chosen_project_name = choice.as_str();
+            let chosen_path = hash.get(&Yaml::from_str(&chosen_project_name));
+            match chosen_path {
+                Some(e) => {
+                    let path = e.as_str().unwrap();
+                    run_open_command(path);
+                },
+                None => println!("No configured path for that project"),
+            }
+        }
     }
 }
