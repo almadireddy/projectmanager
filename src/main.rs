@@ -91,15 +91,33 @@ fn load_projects_from_data() -> Result<Yaml, Error> {
 }
 
 fn get_keys_from_project_data(projects: &Yaml) -> Vec<String> {
-    let mut hash = projects.clone().into_hash().unwrap();
-    let mut keys: Vec<String> = Vec::new();
-
-    for entry in hash.entries() {
-        let key = entry.key().as_str().unwrap().to_owned();
-        keys.push(key);
+    if let Yaml::Hash(hash) = projects {
+        let mut keys: Vec<String> = Vec::new();
+        
+        for (k, _v) in hash {
+            let key = k.as_str().unwrap().to_owned();
+            keys.push(key);
+        }
+    
+        return keys
     }
+    
+    return Vec::new()
+}
 
-    keys
+fn get_values_from_project_data(projects: &Yaml) -> Vec<String> {
+    if let Yaml::Hash(hash) = projects {
+        let mut values: Vec<String> = Vec::new();
+        
+        for (_k, v) in hash {
+            let val = v.as_str().unwrap().to_owned();
+            values.push(val);
+        }
+    
+        return values
+    }
+    
+    return Vec::new()
 }
 
 fn display_selection(keys: &Vec<String>) -> usize {
@@ -130,11 +148,12 @@ fn list_projects() {
     let keys = get_keys_from_project_data(&projects);
     println!("Your projects:");
 
-    for i in keys {
-        let hash = projects.clone().into_hash().unwrap();
-        let location = hash.get(&Yaml::from_str(&i)).unwrap().as_str().unwrap();
-        println!("{}", i);
-        println!("  {}", location);
+    if let Yaml::Hash(hash) = projects {
+        for i in keys {   
+            let location = hash.get(&Yaml::from_str(&i)).unwrap().as_str().unwrap();
+            println!("{}", i);
+            println!("  {}", location);
+        }
     }
 }
 
@@ -154,31 +173,32 @@ fn open_project(matches: &clap::ArgMatches<'_>) {
     
     let project_data = load_projects_from_data();
     let project = project_data.unwrap();
-    let hash = project.clone().into_hash().unwrap();
-    
-    match project_name {
-        Some(p) => {
-            let entry = hash.get(&Yaml::from_str(&p));
-            match entry {
-                Some(e) => {
-                    let path = e.as_str().unwrap();
-                    run_open_command(path);
-                },
-                None => println!("Project doesn't exist!")
-            }
-        },
-        None => {
-            let keys = get_keys_from_project_data(&project);
-            let selection = display_selection(&keys);
-            let choice = keys.get(selection).unwrap();
-            let chosen_project_name = choice.as_str();
-            let chosen_path = hash.get(&Yaml::from_str(&chosen_project_name));
-            match chosen_path {
-                Some(e) => {
-                    let path = e.as_str().unwrap();
-                    run_open_command(path);
-                },
-                None => println!("No configured path for that project"),
+
+    if let Yaml::Hash(hash) = &project {
+        match project_name {
+            Some(p) => {
+                let entry = hash.get(&Yaml::from_str(&p));
+                match entry {
+                    Some(e) => {
+                        let path = e.as_str().unwrap();
+                        run_open_command(path);
+                    },
+                    None => println!("Project doesn't exist!")
+                }
+            },
+            None => {
+                let keys = get_keys_from_project_data(&project);
+                let selection = display_selection(&keys);
+                let choice = keys.get(selection).unwrap();
+                let chosen_project_name = choice.as_str();
+                let chosen_path = hash.get(&Yaml::from_str(&chosen_project_name));
+                match chosen_path {
+                    Some(e) => {
+                        let path = e.as_str().unwrap();
+                        run_open_command(path);
+                    },
+                    None => println!("No configured path for that project"),
+                }
             }
         }
     }
