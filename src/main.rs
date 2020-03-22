@@ -27,6 +27,8 @@ fn main() {
                         .index(1)))
         .subcommand(SubCommand::with_name("list")
                 .about("list project tracked with project manager"))
+        .subcommand(SubCommand::with_name("ls")
+                .about("list project tracked with project manager"))
         .subcommand(SubCommand::with_name("add")
                 .about("add project to track")
                 .arg(Arg::with_name("project_name")
@@ -39,8 +41,9 @@ fn main() {
 
     match matches.subcommand() {
         ("open", Some(sub_command)) => open_project(Option::from(sub_command)),
-        ("list", Some(_subc)) => list_projects(), 
-        ("add", Some(sub_command)) => add_project(&sub_command), 
+        ("list", Some(_)) => list_projects(),
+        ("ls", Some(_)) => list_projects(),
+        ("add", Some(sub_command)) => add_project(&sub_command),
         (&_, None) => open_project(None),
         _ => println!("{}", matches.usage()),
     }
@@ -136,11 +139,10 @@ fn list_projects() {
 
     let keys = get_keys_from_project_data(&projects);
 
-    println!("Your projects:");
     if let Hash(hash) = projects {
         for i in keys {   
             let location = hash.get(&Yaml::from_str(&i)).unwrap().as_str().unwrap();
-            println!("  {} - {}", i.as_str().green(), location);
+            println!("{} - {}", i.as_str().green(), location);
         }
     }
 }
