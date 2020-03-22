@@ -38,11 +38,12 @@ fn main() {
         .get_matches();
 
     match matches.subcommand() {
-        ("open", Some(sub_command)) => open_project(&sub_command), 
+        ("open", Some(sub_command)) => open_project(Option::from(sub_command)),
         ("list", Some(_subc)) => list_projects(), 
         ("add", Some(sub_command)) => add_project(&sub_command), 
-        (&_, _) => println!("{}", matches.usage())
-    }    
+        (&_, None) => open_project(None),
+        _ => println!("{}", matches.usage()),
+    }
 }
 
 fn load_projects_from_data() -> Result<Yaml, Error> {
@@ -70,7 +71,7 @@ fn load_projects_from_data() -> Result<Yaml, Error> {
             if docs.len() == 0 {
                 return Err(Error::new(ErrorKind::Other, "No yaml in file, may be corrupted"))
             }
-            Ok(docs[0].clone())
+            Ok(docs[0].to_owned())
         },
         Err(e) => {
             if let Some(raw_err) = e.raw_os_error() {
@@ -195,42 +196,52 @@ fn add_project(matches: &clap::ArgMatches<'_>) {
     }
 }
 
-fn run_open_command(path: &str) {
-    println!("opening in VSCode at {}", path);
+fn run_open_command(p: &str, path: &str) {
+    println!("Opening project {} at {}", p, path);
     Command::new("code").arg(path).output().expect("failed to open code");
 }
 
-fn open_project(matches: &clap::ArgMatches<'_>) {
-    let project_name = matches.value_of("projectname");
-    
+fn open_with_selector(project: &Yaml) {
+    if let Yaml::Hash(hash) = project {
+        let keys = get_keys_from_project_data(&project);
+        let selection = display_selection(&keys);
+        let choice = keys.get(selection).unwrap();
+        let chosen_project_name = choice.as_str();
+        let chosen_path = hash.get(&Yaml::from_str(&chosen_project_name));
+        match chosen_path {
+            Some(e) => {
+                let path = e.as_str().unwrap();
+                run_open_command(chosen_project_name, path);
+            },
+            None => println!("No configured path for that project"),
+        }
+    }
+}
+
+fn open_project(arg_matches: Option<&clap::ArgMatches<'_>>) {
     let project_data = load_projects_from_data();
     let project = project_data.unwrap();
 
-    if let Yaml::Hash(hash) = &project {
-        match project_name {
-            Some(p) => {
-                let entry = hash.get(&Yaml::from_str(&p));
-                match entry {
-                    Some(e) => {
-                        let path = e.as_str().unwrap();
-                        run_open_command(path);
-                    },
-                    None => println!("Project doesn't exist!")
-                }
-            },
-            None => {
-                let keys = get_keys_from_project_data(&project);
-                let selection = display_selection(&keys);
-                let choice = keys.get(selection).unwrap();
-                let chosen_project_name = choice.as_str();
-                let chosen_path = hash.get(&Yaml::from_str(&chosen_project_name));
-                match chosen_path {
-                    Some(e) => {
-                        let path = e.as_str().unwrap();
-                        run_open_command(path);
-                    },
-                    None => println!("No configured path for that project"),
-                }
+    if arg_matches.is_none() {
+        open_with_selector(&project);
+    }
+
+    if let Some(matches) = arg_matches {
+        let project_name = matches.value_of("projectname");
+
+        if let Yaml::Hash(hash) = &project {
+            match project_name {
+                Some(p) => {
+                    let entry = hash.get(&Yaml::from_str(&p));
+                    match entry {
+                        Some(e) => {
+                            let path = e.as_str().unwrap();
+                            run_open_command(p, path);
+                        },
+                        None => println!("Project doesn't exist!")
+                    }
+                },
+                None => open_with_selector(&project)
             }
         }
     }
