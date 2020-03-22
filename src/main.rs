@@ -2,6 +2,7 @@ extern crate clap;
 extern crate dialoguer;
 extern crate yaml_rust;
 extern crate dirs;
+extern crate colored;
 
 use clap::{Arg, App, SubCommand};
 use dialoguer::{theme::ColorfulTheme, Select};
@@ -12,7 +13,7 @@ use std::vec::Vec;
 use std::result::Result;
 use std::process::Command;
 use std::path::PathBuf;
-use dirs::home_dir;
+use colored::*;
 
 fn main() {
     let matches = App::new("Projects")
@@ -138,8 +139,7 @@ fn list_projects() {
     if let Hash(hash) = projects {
         for i in keys {   
             let location = hash.get(&Yaml::from_str(&i)).unwrap().as_str().unwrap();
-            println!("{}", i);
-            println!("  {}", location);
+            println!("  {} - {}", i.as_str().green(), location);
         }
     }
 }
@@ -154,25 +154,45 @@ fn add_project(matches: &clap::ArgMatches<'_>) {
     match data {
         Ok(mut data) => {
             if let Hash(hash) = &mut data {
-                hash.insert(Yaml::from_str(project_name), Yaml::from_str(canon_path));
-                let mut home_directory = dirs::home_dir().unwrap();
-                let mut f: File;
+                let project_name_yaml = Yaml::from_str(project_name);
+                let project_path_yaml = Yaml::from_str(canon_path);
+                let mut selection: usize = 0;
+                let mut exists: bool = false;
 
-                home_directory.push(".projectman");
+                if hash.contains_key(&project_name_yaml) {
+                    exists = true;
+                    let select_items = ["No", "Yes"];
+                    selection = Select::with_theme(&ColorfulTheme::default())
+                        .with_prompt("A project with that name already exists. Overwrite?")
+                        .items(&select_items)
+                        .default(0)
+                        .interact()
+                        .unwrap();
+                }
 
-                f = OpenOptions::new().write(true).open(home_directory).unwrap();
-                let mut raw = String::new();
-                let mut emitter = YamlEmitter::new(&mut raw);
-                emitter.dump(&data).unwrap();
+                if selection == 1 || !exists {
+                    hash.insert(project_name_yaml, project_path_yaml);
 
-                f.write(raw.as_bytes());
+                    let mut home_directory = dirs::home_dir().unwrap();
+                    let mut f: File;
+
+                    home_directory.push(".projectman");
+
+                    f = OpenOptions::new().write(true).open(home_directory).unwrap();
+                    let mut raw = String::new();
+                    let mut emitter = YamlEmitter::new(&mut raw);
+                    emitter.dump(&data).unwrap();
+                    f.write(raw.as_bytes()).unwrap();
+                    println!("Added project '{}' at path {}", project_name, canon_path);
+                } else {
+                    println!("Skipping overwrite. No changes made.")
+                }
             }
         },
         Err(e) => {
             println!("Error loading current projects {}", e)
         }
     }
-    println!("Added project '{}' at path {}", project_name, canon_path);
 }
 
 fn run_open_command(path: &str) {
