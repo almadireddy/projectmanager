@@ -5,7 +5,7 @@ extern crate dirs;
 extern crate colored;
 
 use clap::{Arg, App, SubCommand};
-use dialoguer::{theme::ColorfulTheme, Select};
+use dialoguer::{theme::ColorfulTheme, Select, Input};
 use yaml_rust::{YamlLoader, Yaml, Yaml::Hash, YamlEmitter};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Error, ErrorKind, Write};
@@ -32,10 +32,10 @@ fn main() {
         .subcommand(SubCommand::with_name("add")
                 .about("add project to track")
                 .arg(Arg::with_name("project_name")
-                        .required(true)
+                        .required(false)
                         .index(1))
                 .arg(Arg::with_name("project_path")
-                        .required(true)
+                        .required(false)
                         .index(2)))
         .get_matches();
 
@@ -148,8 +148,24 @@ fn list_projects() {
 }
 
 fn add_project(matches: &clap::ArgMatches<'_>) {
-    let project_name = matches.value_of("project_name").unwrap();
-    let project_path = matches.value_of("project_path").unwrap();
+    let project_name_match = matches.value_of("project_name");
+    let project_path_match = matches.value_of("project_path");
+    let project_name: String;
+    let project_path: &str;
+
+    match project_name_match {
+        Some(p) => project_name = String::from(p),
+        None => project_name = Input::<String>::with_theme(&ColorfulTheme::default())
+                .with_prompt(&"Enter name of project")
+                .interact()
+                .unwrap()
+    }
+
+    match project_path_match {
+        Some(p) => project_path = p,
+        None => project_path = "."
+    }
+
     let canon_path_buf = std::fs::canonicalize(PathBuf::from(project_path)).unwrap();
     let canon_path = canon_path_buf.to_str().unwrap();
 
@@ -157,7 +173,7 @@ fn add_project(matches: &clap::ArgMatches<'_>) {
     match data {
         Ok(mut data) => {
             if let Hash(hash) = &mut data {
-                let project_name_yaml = Yaml::from_str(project_name);
+                let project_name_yaml = Yaml::from_str(project_name.as_str());
                 let project_path_yaml = Yaml::from_str(canon_path);
                 let mut selection: usize = 0;
                 let mut exists: bool = false;
@@ -186,9 +202,9 @@ fn add_project(matches: &clap::ArgMatches<'_>) {
                     let mut emitter = YamlEmitter::new(&mut raw);
                     emitter.dump(&data).unwrap();
                     f.write(raw.as_bytes()).unwrap();
-                    println!("Added project '{}' at path {}", project_name, canon_path);
+                    println!("{} Added project '{}' at path {}", "\u{2714}".green(), project_name, canon_path);
                 } else {
-                    println!("Skipping overwrite. No changes made.")
+                    println!("{} Skipping overwrite. No changes made.", "\u{274C}".red())
                 }
             }
         },
