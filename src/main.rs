@@ -25,6 +25,16 @@ fn main() {
                 .arg(Arg::with_name("projectname")
                         .required(false)
                         .index(1)))
+        .subcommand(SubCommand::with_name("remove")
+                .about("remove a bookmark")
+                .arg(Arg::with_name("projectname")
+                        .required(false)
+                        .index(1)))
+        .subcommand(SubCommand::with_name("rm")
+                .about("remove a bookmark")
+                .arg(Arg::with_name("projectname")
+                        .required(false)
+                        .index(1)))
         .subcommand(SubCommand::with_name("list")
                 .about("list project tracked with project manager"))
         .subcommand(SubCommand::with_name("ls")
@@ -40,11 +50,21 @@ fn main() {
         .get_matches();
 
     match matches.subcommand() {
-        ("open", Some(sub_command)) => open_project(Option::from(sub_command)),
-        ("list", Some(_)) => list_projects(),
-        ("ls", Some(_)) => list_projects(),
-        ("add", Some(sub_command)) => add_project(&sub_command),
-        (&_, None) => open_project(None),
+        ("open", Some(sub)) => {
+            open_project(Option::from(sub))
+        } ,
+        ("remove", Some(sub)) | ("rm", Some(sub)) => {
+            remove_project(&sub)
+        },
+        ("list", Some(_)) | ("ls", Some(_)) => {
+            list_projects()
+        },
+        ("add", Some(sub)) => {
+            add_project(&sub)
+        },
+        (&_, None) => {
+            open_project(None)
+        },
         _ => println!("{}", matches.usage()),
     }
 }
@@ -147,6 +167,23 @@ fn list_projects() {
     }
 }
 
+fn write_to_data_file(yaml: &Yaml) -> bool {
+    let mut home_directory = dirs::home_dir().unwrap();
+    let mut f: File;
+    home_directory.push(".projectman");
+
+    f = OpenOptions::new().write(true).open(home_directory).unwrap();
+    f.set_len(0).unwrap();
+    let mut raw = String::new();
+    let mut emitter = YamlEmitter::new(&mut raw);
+    emitter.dump(&yaml).unwrap();
+    let res = f.write(raw.as_bytes());
+    return match res {
+        Ok(_) => true,
+        Err(_) => false
+    }
+}
+
 fn add_project(matches: &clap::ArgMatches<'_>) {
     let project_name_match = matches.value_of("project_name");
     let project_path_match = matches.value_of("project_path");
@@ -191,18 +228,12 @@ fn add_project(matches: &clap::ArgMatches<'_>) {
 
                 if selection == 1 || !exists {
                     hash.insert(project_name_yaml, project_path_yaml);
-
-                    let mut home_directory = dirs::home_dir().unwrap();
-                    let mut f: File;
-
-                    home_directory.push(".projectman");
-
-                    f = OpenOptions::new().write(true).open(home_directory).unwrap();
-                    let mut raw = String::new();
-                    let mut emitter = YamlEmitter::new(&mut raw);
-                    emitter.dump(&data).unwrap();
-                    f.write(raw.as_bytes()).unwrap();
-                    println!("{} Added project '{}' at path {}", "\u{2714}".green(), project_name, canon_path);
+                    let written = write_to_data_file(&data);
+                    if written {
+                        println!("{} Added project '{}' at path {}", "\u{2714}".green(), project_name, canon_path);
+                    } else {
+                        println!("{}", "Couldn't write to config file".red());
+                    }
                 } else {
                     println!("{} Skipping overwrite. No changes made.", "\u{274C}".red())
                 }
@@ -263,4 +294,35 @@ fn open_project(arg_matches: Option<&clap::ArgMatches<'_>>) {
             }
         }
     }
+}
+
+fn remove_with_selector(project: &mut Yaml) {
+    let keys = get_keys_from_project_data(&project);
+    if let Yaml::Hash(hash) = project {
+        let selection = display_selection(&keys);
+        let choice = keys.get(selection).unwrap();
+        let chosen_project_name = choice.as_str();
+        let removed_path = hash.remove(&Yaml::from_str(&chosen_project_name));
+        println!("Removed bookmark {} at {}", chosen_project_name, removed_path.unwrap().as_str().unwrap());
+    }
+}
+
+fn remove_project(arg_matches: &clap::ArgMatches<'_>) {
+    let project_data = load_projects_from_data();
+    let mut project = project_data.unwrap();
+
+    let project_to_rm = arg_matches.value_of("projectname");
+    match project_to_rm {
+        Some(t) => {
+            if let Yaml::Hash(hash) = &mut project {
+                let removed = hash.remove(&Yaml::from_str(t));
+                println!("Removed bookmark {} at {}", t, removed.unwrap().as_str().unwrap());
+            }
+        },
+        None => {
+            remove_with_selector(&mut project);
+        }
+    }
+
+    write_to_data_file(&project);
 }
